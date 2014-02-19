@@ -1,6 +1,7 @@
 import java.awt.AWTException;
 import java.awt.Robot;
 import java.awt.RenderingHints.Key;
+import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 import java.io.DataInputStream;
 import java.io.File;
@@ -9,6 +10,11 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Properties;
+
+import javax.swing.KeyStroke;
+import javax.swing.text.JTextComponent.KeyBinding;
+import javax.xml.crypto.KeySelector;
 
 import org.pircbotx.Configuration;
 import org.pircbotx.PircBotX;
@@ -20,7 +26,8 @@ import org.pircbotx.hooks.events.MessageEvent;
 public class IRCInput extends ListenerAdapter<PircBotX> implements Listener<PircBotX>{
 	
 	private static PircBotX bot;
-	private Map<String, Integer> keyBinds = new HashMap<String, Integer>();
+	private Map<String, Properties> settings = new HashMap<String, Properties>();
+	private Map<String, Integer> keys = new HashMap<String, Integer>();
 	String channel, name, address;
 	int port;
 	Robot robot;
@@ -35,15 +42,19 @@ public class IRCInput extends ListenerAdapter<PircBotX> implements Listener<Pirc
 	}
 	
 	public IRCInput() throws AWTException, IOException{
+		for(int i = 0; i < KeyEvent.KEY_LAST; i++){
+			keys.put(KeyEvent.getKeyText(i).toLowerCase(), i);
+			System.out.println(KeyEvent.getKeyText(i).toLowerCase());
+		}
 		robot = new Robot();
 		loadSettings();
 		try {
 			Configuration<PircBotX> config = new Configuration.Builder()
-		    .setName(name)
+		    .setName(settings.get("settings").getProperty("bot_name"))
 		    .setLogin("none")
 		    .setAutoNickChange(true)
-		    .setServer(address,port)
-		    .addAutoJoinChannel(channel)
+		    .setServer(settings.get("settings").getProperty("ip"),Integer.parseInt(settings.get("settings").getProperty("port")))
+		    .addAutoJoinChannel(settings.get("settings").getProperty("channel"))
 		    .buildConfiguration();
 			config.getListenerManager().addListener(this);
 			bot = new PircBotX(config);
@@ -62,42 +73,31 @@ public class IRCInput extends ListenerAdapter<PircBotX> implements Listener<Pirc
 	private void loadSettings() throws IOException{
 		DataInputStream in = new DataInputStream(new FileInputStream(new File("settings.conf")));
 		String region = "none";
+		Properties props = new Properties();
 		for(String s = ""; (s=in.readLine()) != null;){
-			if(s.equals("[settings]")){
-				region = "settings";
-				continue;
-			}
-			if(s.equals("[keybinds]")){
-				region = "keybinds";
-				continue;
-			}
-			
-			String[] line = s.split(":");
-			if(region.equals("settings")){
-				if(line[0].equals("ip")){
-					address = line[1];
-				}else if(line[0].equals("port")){
-					port = Integer.parseInt(line[1]);
-				}else if(line[0].equals("channel")){
-					channel = line[1];
-				}else if(line[0].equals("bot_name")){
-					name = line[1];
-				}
-			}else if(region.equals("keybinds")){
-				keyBinds.put(line[0], KeyEvent.getExtendedKeyCodeForChar(line[1].charAt(0)));
+			if(s.matches("\\[([^\\]]){1,}\\](^.){0,}")){
+				System.out.println(s);
+				settings.put(region, props);
+				region = s.substring(1, s.length()-1);
+				props = new Properties();
+			}else if(s.matches("[^:]{1,}[:][^:]{1,}")){
+				String[] line = s.split(":");
+				props.put(line[0], line[1]);
 			}
 			
 		}
+		settings.put(region, props);
 	}
 	
 	@Override
 	public void onMessage(MessageEvent<PircBotX> event) throws Exception {
 		String message = event.getMessage();
 		System.out.println(message);
-		if(keyBinds.containsKey(message)){
-		robot.keyPress(keyBinds.get(message));
+		if(settings.get("keybinds").containsKey(message)){
+		int keyCode  = keys.get(settings.get("keybinds").get(message));
+		robot.keyPress(keyCode);
 		Thread.sleep(10);
-		robot.keyRelease(keyBinds.get(message));
+		robot.keyRelease(keyCode);
 		}
 	}
 
