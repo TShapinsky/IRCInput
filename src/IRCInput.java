@@ -14,11 +14,14 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Scanner;
 
+import javax.swing.JFrame;
+import javax.swing.JTextArea;
 import javax.swing.KeyStroke;
 import javax.swing.text.JTextComponent.KeyBinding;
 import javax.xml.crypto.KeySelector;
 
 import org.pircbotx.Configuration;
+import org.pircbotx.Configuration.Builder;
 import org.pircbotx.PircBotX;
 import org.pircbotx.User;
 import org.pircbotx.exception.IrcException;
@@ -38,7 +41,6 @@ public class IRCInput extends ListenerAdapter<PircBotX> implements
 	private Map<String, Properties> settings = new HashMap<String, Properties>();
 	private Map<String, Integer> keys = new HashMap<String, Integer>();
 	private ArrayList<User> authenticatedUsers = new ArrayList<User>();
-	String channel, name, address;
 	int port;
 	Robot robot;
 
@@ -59,14 +61,18 @@ public class IRCInput extends ListenerAdapter<PircBotX> implements
 		loadSettings();
 		try {
 			@SuppressWarnings({ "unchecked", "rawtypes" })
-			Configuration<PircBotX> config = new Configuration.Builder()
-					.setName(getProperty("settings", "bot_name"))
-					.setLogin(getProperty("settings", "bot_login"))
+			Configuration<PircBotX> config;
+			Builder build= new Configuration.Builder()
+					.setName(getProperty("settings", "irc_nickname"))
+					.setLogin(getProperty("settings", "irc_login"))
 					.setAutoNickChange(true)
-					.setServer(getProperty("settings", "ip"),
-							Integer.parseInt(getProperty("settings", "port")))
-					.addAutoJoinChannel(getProperty("settings", "channel"))
-					.buildConfiguration();
+					.setServer(getProperty("settings", "irc_address"),
+							Integer.parseInt(getProperty("settings", "irc_port")))
+					.addAutoJoinChannel(getProperty("channel", "name"));
+			if(Boolean.parseBoolean(getProperty("settings", "irc_uses_password"))){
+				build.setServerPassword(getProperty("settings", "irc_password"));
+			}
+			config = build.buildConfiguration();
 			config.getListenerManager().addListener(this);
 			bot = new PircBotX(config);
 			bot.startBot();
@@ -79,7 +85,7 @@ public class IRCInput extends ListenerAdapter<PircBotX> implements
 		}
 
 	}
-
+	
 	private void loadSettings() throws IOException {
 		Scanner file = new Scanner(new File(
 				"settings.conf"));
@@ -104,11 +110,11 @@ public class IRCInput extends ListenerAdapter<PircBotX> implements
 	@Override
 	public void onPrivateMessage(PrivateMessageEvent<PircBotX> event)
 			throws Exception {
-		if (Boolean.parseBoolean(getProperty("settings", "use_password"))) {
+		if (Boolean.parseBoolean(getProperty("security", "use_password"))) {
 			if (authenticatedUsers.contains(event.getUser())) {
 				event.respond("You have already authenticated");
 			} else if (event.getMessage().equals(
-					getProperty("settings", "password"))) {
+					getProperty("security", "password"))) {
 				authenticatedUsers.add(event.getUser());
 				event.respond("Youu have successfuly authenticated");
 			} else {
@@ -120,7 +126,7 @@ public class IRCInput extends ListenerAdapter<PircBotX> implements
 	@Override
 	public void onJoin(JoinEvent<PircBotX> event) throws Exception {
 		if (event.getUser() != bot.getUserBot()) {
-			event.respond(getProperty("channel", "join_message").replaceAll(
+			bot.sendIRC().message(getProperty("settings", "channel"), getProperty("channel", "join_message").replaceAll(
 					"%n", event.getUser().getNick()));
 		}
 	}
@@ -129,13 +135,13 @@ public class IRCInput extends ListenerAdapter<PircBotX> implements
 	public void onMessage(MessageEvent<PircBotX> event) throws Exception {
 		String message = event.getMessage();
 		System.out.println(message);
-		if (Boolean.parseBoolean(getProperty("settings", "use_password"))) {
-			if (!authenticatedUsers.contains(event.getUser())) {
-				event.respond("You can not use that command. You must first PM me the password you were given by the admin");
-				return;
-			}
-		}
 		if (settings.get("keybinds").containsKey(message)) {
+			if (Boolean.parseBoolean(getProperty("security", "use_password"))) {
+				if (!authenticatedUsers.contains(event.getUser())) {
+					event.respond("You can not use that command. You must first PM me the password you were given by the admin");
+					return;
+				}
+			}
 			int keyCode = keys.get(getProperty("keybinds", message));
 			robot.keyPress(keyCode);
 			Thread.sleep(10);
